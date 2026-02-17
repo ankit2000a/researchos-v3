@@ -92,14 +92,24 @@ class Auditor:
         return audited_data
 
     def _verify_geometry(self, value_str: str, vision_map: List[Dict]) -> Tuple[Optional[List[float]], Optional[str]]:
-        """Exact or fuzzy match against LLMWhisperer map."""
+        """Exact or fuzzy match against LLMWhisperer map with normalization."""
         if not vision_map:
             return None, None
+        
+        # Normalize the extracted value for matching
+        clean_value = str(value_str).strip().lower().replace(',', '').replace(' ', '')
             
         for i, elem in enumerate(vision_map):
-            # Simple string match for V3 scaffold
-            if str(elem["text"]) == value_str:
-                return elem["bbox"], f"bbox_{i}"
+            # Check both 'value' and 'text' keys
+            elem_text = elem.get('value', elem.get('text', ''))
+            clean_elem = str(elem_text).strip().lower().replace(',', '').replace(' ', '')
+            
+            # Try exact match, substring match (both directions)
+            if clean_value == clean_elem or clean_value in clean_elem or clean_elem in clean_value:
+                coords = elem.get('coords', elem.get('bbox', [0, 0, 0, 0]))
+                bbox_id = elem.get('id', f"bbox_{i}")
+                return coords, bbox_id
+        
         return None, None
 
     def _attempt_disprove(self, field: str, value: Any, text: str) -> str:

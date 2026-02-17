@@ -22,22 +22,32 @@ class ManagerAgent:
     def run_pipeline(self, file_path: str) -> Dict[str, Any]:
         """
         Executes the Truth Engine Pipeline.
+        Legacy method for backward compatibility.
+        """
+        return self.process_document(file_path)
+    
+    def process_document(self, file_path: str) -> Dict[str, Any]:
+        """
+        Executes the Truth Engine Pipeline with full vision map support.
         """
         # 1. Vision
         logger.info("Step 1: Vision Processing...")
-        markdown_text, vision_map = self.vision.process_pdf(file_path)
+        narrative, vision_map = self.vision.process_pdf(file_path)
         
-        # 2. Architect
+        # 2. Architect - pass BOTH narrative and vision_map
         logger.info("Step 2: Data Extraction...")
-        raw_data = self.architect.extract_data(markdown_text)
+        raw_data = self.architect.extract_fields(narrative, vision_map)
         
         # 3. Auditor
         logger.info("Step 3: Verification (Truth Engine)...")
-        final_report = self.auditor.audit_extraction(raw_data, markdown_text, vision_map)
+        verified_data = self.auditor.audit_extraction(raw_data, narrative, vision_map)
         
         return {
             "session_id": self.session_id,
             "status": "COMPLETED",
-            "report": final_report,
-            "markdown": markdown_text
+            "verified_data": verified_data,
+            "report": verified_data,  # backward compatibility
+            "narrative": narrative[:500],
+            "vision_map": vision_map,
+            "audit_trail": []
         }
