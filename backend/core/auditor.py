@@ -8,6 +8,9 @@ from schemas.clinical_trial import ClinicalTrialData, ClinicalDataField, Verific
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Coordinate matching constants
+MIN_SUBSTRING_MATCH_LENGTH = 5  # Minimum string length for substring matching to reduce false positives
+
 class Auditor:
     """
     Agent 3: The Auditor (The Truth Engine).
@@ -111,9 +114,9 @@ class Auditor:
                 bbox_id = elem.get('id', f"bbox_{i}")
                 return coords, bbox_id
             
-            # For longer strings (>5 chars), try substring matching
+            # For longer strings, try substring matching
             # This helps with cases where extracted text is part of a longer field
-            if len(clean_value) > 5:
+            if len(clean_value) > MIN_SUBSTRING_MATCH_LENGTH:
                 if clean_value in clean_elem or clean_elem in clean_value:
                     coords = elem.get('coords', elem.get('bbox', [0, 0, 0, 0]))
                     bbox_id = elem.get('id', f"bbox_{i}")

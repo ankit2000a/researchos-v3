@@ -100,9 +100,13 @@ async def upload_pdf(file: UploadFile = File(...)):
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are accepted")
         
-        # Sanitize filename - remove path traversal and unsafe characters
-        safe_filename = re.sub(r'[^\w\s.-]', '', file.filename)
+        # Sanitize filename - remove unsafe characters (no dots to prevent path traversal)
+        safe_filename = re.sub(r'[^\w\s-]', '', file.filename)
         safe_filename = Path(safe_filename).name  # Extra safety: extract just the filename
+        
+        # Ensure we have a filename after sanitization
+        if not safe_filename:
+            safe_filename = "upload.pdf"
         
         # Create unique filename
         unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"

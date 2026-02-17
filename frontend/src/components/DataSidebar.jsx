@@ -4,6 +4,28 @@ import { ShieldAlert, CheckCircle, XCircle, AlertTriangle, MapPin, ChevronDown, 
 const DataSidebar = ({ data, onSelectField }) => {
     const [expandedThinking, setExpandedThinking] = useState({});
 
+    // Helper function to validate coordinates
+    const isValidCoordinate = (coordinates) => {
+        if (!coordinates) return false;
+        
+        // Check all required properties exist and are not null
+        const hasAllProperties = 
+            coordinates.x !== null && 
+            coordinates.y !== null && 
+            coordinates.w !== null && 
+            coordinates.h !== null;
+        
+        // Reject if all coordinates are zero (invalid placeholder)
+        const notAllZeros = !(
+            coordinates.x === 0 && 
+            coordinates.y === 0 && 
+            coordinates.w === 0 && 
+            coordinates.h === 0
+        );
+        
+        return hasAllProperties && notAllZeros;
+    };
+
     if (!data) {
         return (
             <div className="w-96 h-full bg-white border-l border-gray-200 flex items-center justify-center">
@@ -57,14 +79,8 @@ const DataSidebar = ({ data, onSelectField }) => {
                         iconColor = "text-orange-600";
                     }
 
-                    // Check if coordinates are valid (not null/undefined and has all required properties)
-                    const hasValidCoordinates = item.coordinates && 
-                        item.coordinates.x !== null && 
-                        item.coordinates.y !== null && 
-                        item.coordinates.w !== null && 
-                        item.coordinates.h !== null &&
-                        !(item.coordinates.x === 0 && item.coordinates.y === 0 && 
-                          item.coordinates.w === 0 && item.coordinates.h === 0);
+                    // Check if coordinates are valid
+                    const hasValidCoordinates = isValidCoordinate(item.coordinates);
 
                     const isThinkingExpanded = expandedThinking[key];
 
