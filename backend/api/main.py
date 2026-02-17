@@ -1,16 +1,25 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import logging
 import os
 import json
+import shutil
+import uuid
+import re
+from pathlib import Path
 
 from core.manager_agent import ManagerAgent
 from core.config import Config
 
 # Initialize App
 app = FastAPI(title="ResearchOS V3 Truth Engine API")
+
+# Create upload directory
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # CORS
 origins = [
@@ -29,6 +38,9 @@ app.add_middleware(
 # Global Manager Instance (Mock Session)
 manager = ManagerAgent()
 latest_result = {}
+
+# Store results by session
+sessions = {}
 
 class AuditRequest(BaseModel):
     file_path: str
@@ -76,3 +88,78 @@ def get_logs():
         with open(log_file, "r") as f:
             return json.load(f)
     return []
+
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    """
+    Upload a PDF file and process it through the Truth Engine pipeline.
+    Returns the session_id and processing results.
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+        
+        # Sanitize filename - remove unsafe characters (no dots to prevent path traversal)
+        safe_filename = re.sub(r'[^\w\s-]', '', file.filename)
+        safe_filename = Path(safe_filename).name  # Extra safety: extract just the filename
+        
+        # Ensure we have a filename after sanitization
+        if not safe_filename:
+            safe_filename = "upload.pdf"
+        
+        # Create unique filename
+        unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+        filepath = os.path.join(UPLOAD_DIR, unique_filename)
+        
+        # Ensure filepath is within UPLOAD_DIR (prevent path traversal)
+        abs_filepath = os.path.abspath(filepath)
+        abs_upload_dir = os.path.abspath(UPLOAD_DIR)
+        if not abs_filepath.startswith(abs_upload_dir):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        
+        with open(filepath, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        
+        logging.info(f"Uploaded file saved to: {filepath}")
+        
+        # Process through pipeline
+        manager_instance = ManagerAgent()
+        result = manager_instance.process_document(filepath)
+        
+        # Store results by session
+        session_id = manager_instance.session_id
+        sessions[session_id] = {
+            **result,
+            "filename": unique_filename,
+            "filepath": filepath
+        }
+        
+        # Also update global for backward compatibility
+        global latest_result
+        latest_result = result
+        
+        return {
+            "session_id": session_id,
+            "status": "COMPLETED",
+            "verified_data": result["verified_data"],
+            "vision_map": result["vision_map"],
+            "narrative": result.get("narrative", ""),
+            "audit_trail": result.get("audit_trail", []),
+            "filename": unique_filename
+        }
+    except Exception as e:
+        logging.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/process/{session_id}")
+async def get_results_by_session(session_id: str):
+    """
+    Get processing results for a specific session.
+    """
+    if session_id in sessions:
+        return sessions[session_id]
+    raise HTTPException(status_code=404, detail="Session not found")
+
+# Mount uploads directory to serve uploaded PDFs
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
