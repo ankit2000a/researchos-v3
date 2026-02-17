@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, List, Optional, Tuple
+import re
 from core.config import Config
 from core.compliance import ComplianceLogger
 from schemas.clinical_trial import ClinicalTrialData, ClinicalDataField, VerificationStatus, AuditLogEntry, BoundingBox
@@ -96,19 +97,27 @@ class Auditor:
         if not vision_map:
             return None, None
         
-        # Normalize the extracted value for matching
-        clean_value = str(value_str).strip().lower().replace(',', '').replace(' ', '')
+        # Normalize the extracted value for matching - remove commas, spaces, and lowercase
+        clean_value = re.sub(r'[,\s]', '', str(value_str).strip().lower())
             
         for i, elem in enumerate(vision_map):
             # Check both 'value' and 'text' keys
             elem_text = elem.get('value', elem.get('text', ''))
-            clean_elem = str(elem_text).strip().lower().replace(',', '').replace(' ', '')
+            clean_elem = re.sub(r'[,\s]', '', str(elem_text).strip().lower())
             
-            # Try exact match, substring match (both directions)
-            if clean_value == clean_elem or clean_value in clean_elem or clean_elem in clean_value:
+            # Try exact match first
+            if clean_value == clean_elem:
                 coords = elem.get('coords', elem.get('bbox', [0, 0, 0, 0]))
                 bbox_id = elem.get('id', f"bbox_{i}")
                 return coords, bbox_id
+            
+            # For longer strings (>5 chars), try substring matching
+            # This helps with cases where extracted text is part of a longer field
+            if len(clean_value) > 5:
+                if clean_value in clean_elem or clean_elem in clean_value:
+                    coords = elem.get('coords', elem.get('bbox', [0, 0, 0, 0]))
+                    bbox_id = elem.get('id', f"bbox_{i}")
+                    return coords, bbox_id
         
         return None, None
 

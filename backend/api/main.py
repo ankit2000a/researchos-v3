@@ -8,6 +8,8 @@ import os
 import json
 import shutil
 import uuid
+import re
+from pathlib import Path
 
 from core.manager_agent import ManagerAgent
 from core.config import Config
@@ -94,9 +96,23 @@ async def upload_pdf(file: UploadFile = File(...)):
     Returns the session_id and processing results.
     """
     try:
-        # Save uploaded file
-        filename = f"{uuid.uuid4().hex}_{file.filename}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+        
+        # Sanitize filename - remove path traversal and unsafe characters
+        safe_filename = re.sub(r'[^\w\s.-]', '', file.filename)
+        safe_filename = Path(safe_filename).name  # Extra safety: extract just the filename
+        
+        # Create unique filename
+        unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+        filepath = os.path.join(UPLOAD_DIR, unique_filename)
+        
+        # Ensure filepath is within UPLOAD_DIR (prevent path traversal)
+        abs_filepath = os.path.abspath(filepath)
+        abs_upload_dir = os.path.abspath(UPLOAD_DIR)
+        if not abs_filepath.startswith(abs_upload_dir):
+            raise HTTPException(status_code=400, detail="Invalid file path")
         
         with open(filepath, "wb") as f:
             shutil.copyfileobj(file.file, f)
@@ -111,7 +127,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         session_id = manager_instance.session_id
         sessions[session_id] = {
             **result,
-            "filename": filename,
+            "filename": unique_filename,
             "filepath": filepath
         }
         
@@ -126,7 +142,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             "vision_map": result["vision_map"],
             "narrative": result.get("narrative", ""),
             "audit_trail": result.get("audit_trail", []),
-            "filename": filename
+            "filename": unique_filename
         }
     except Exception as e:
         logging.error(f"Upload failed: {e}")

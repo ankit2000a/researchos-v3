@@ -57,12 +57,14 @@ const DataSidebar = ({ data, onSelectField }) => {
                         iconColor = "text-orange-600";
                     }
 
-                    // Check if coordinates are valid (not null and not all zeros)
+                    // Check if coordinates are valid (not null/undefined and has all required properties)
                     const hasValidCoordinates = item.coordinates && 
-                        item.coordinates.x !== 0 && 
-                        item.coordinates.y !== 0 && 
-                        item.coordinates.w !== 0 && 
-                        item.coordinates.h !== 0;
+                        item.coordinates.x !== null && 
+                        item.coordinates.y !== null && 
+                        item.coordinates.w !== null && 
+                        item.coordinates.h !== null &&
+                        !(item.coordinates.x === 0 && item.coordinates.y === 0 && 
+                          item.coordinates.w === 0 && item.coordinates.h === 0);
 
                     const isThinkingExpanded = expandedThinking[key];
 
