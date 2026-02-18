@@ -1,16 +1,47 @@
-# Python
+# secrets
+.env
+backend/.env
+
+# python
 __pycache__/
-*.py[cod]
-*.class
-*.so
-. Python
-env/
+*.pyc
+*.pyo
+*.pyd
+.venv/
 venv/
-. env
-logs/
+
+# node
+node_modules/
+frontend/node_modules/
+
+# builds
+dist/
+build/
 *.log
 
-# Node
-node_modules/
-dist/
+# OS junk
 .DS_Store
+Thumbs.db
+
+# temp save files
+*.save
+*.swp
+*.tmp
+backend/..save
+
+# uploads / datasets
+PDFs/
+backend/uploads/
+conflict_study.pdf
+
+# ai agent cache
+.agent/
+
+# editor
+.vscode/
+.idea/
+
+
+# runtime logs
+**/logs/
+**/audit_trail_*.json

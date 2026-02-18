@@ -8,6 +8,7 @@ class VerificationStatus(str, Enum):
     GEOMETRIC_FAIL = "GEOMETRIC_FAIL"
     CRITICAL_CONFLICT = "CRITICAL_CONFLICT"
     MATH_ERROR = "MATH_ERROR"
+    REVIEW_NEEDED = "REVIEW_NEEDED"
     UNVERIFIED = "UNVERIFIED"
 
 class BoundingBox(BaseModel):

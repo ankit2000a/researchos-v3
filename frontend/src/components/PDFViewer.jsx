@@ -1,10 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useImperativeHandle, forwardRef, useState } from 'react';
 import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { highlightPlugin } from '@react-pdf-viewer/highlight';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/highlight/lib/styles/index.css';
 
-const PDFViewer = ({ pdfUrl, activeBox, onMount }) => {
+const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
+    const [tempHighlight, setTempHighlight] = useState(null);
+
+    // Defensive check
+    if (!pdfUrl) return null;
+
     const highlightPluginInstance = highlightPlugin({
         renderHighlightTarget: (props) => (
             <div
@@ -22,11 +27,51 @@ const PDFViewer = ({ pdfUrl, activeBox, onMount }) => {
 
     const { jumpToHighlightArea } = highlightPluginInstance;
 
-    // --- SYNC-CLICK LOGIC ---
+    // Allow parent to trigger scroll/highlight via ref
+    useImperativeHandle(ref, () => ({
+        scrollToAndHighlight: (location) => {
+            if (!location) return;
+
+            console.log('🔦 PDFViewer received scroll request:', location);
+            const { page, x, y, w, h } = location;
+
+            // Note: API uses 1-based page numbers, Viewer uses 0-based index
+            let pageIndex = 0;
+            if (typeof page === 'number') {
+                pageIndex = page > 0 ? page - 1 : 0;
+            }
+
+            // Use the library's built-in jump function
+            // It expects: { pageIndex, left, top, width, height }
+            jumpToHighlightArea({
+                pageIndex: pageIndex,
+                left: x,
+                top: y,
+                width: w,
+                height: h
+            });
+
+            // Immediate visual feedback (Yellow flash)
+            setTempHighlight({
+                pageIndex,
+                left: x,
+                top: y,
+                width: w,
+                height: h
+            });
+
+            // Clear after 3 seconds
+            setTimeout(() => {
+                setTempHighlight(null);
+            }, 3000);
+        }
+    }));
+
+    // --- SYNC-CLICK LOGIC (Keep for backward compatibility if needed) ---
     useEffect(() => {
         if (activeBox) {
             jumpToHighlightArea({
-                pageIndex: activeBox.page - 1, // API is 1-based, Viewer is 0-based
+                pageIndex: activeBox.page > 0 ? activeBox.page - 1 : 0,
                 left: activeBox.x,
                 top: activeBox.y,
                 width: activeBox.w,
@@ -36,26 +81,36 @@ const PDFViewer = ({ pdfUrl, activeBox, onMount }) => {
     }, [activeBox]);
 
     const renderHighlights = (props) => {
-        if (!activeBox) return <></>;
-        if (props.pageIndex !== activeBox.page - 1) return <></>;
+        const currentHighlight = tempHighlight || (activeBox ? {
+            pageIndex: activeBox.page > 0 ? activeBox.page - 1 : 0,
+            left: activeBox.x,
+            top: activeBox.y,
+            width: activeBox.w,
+            height: activeBox.h
+        } : null);
 
-        const scale = props.scale; // --- SCALING FIX ---
+        if (!currentHighlight) return <></>;
+        if (props.pageIndex !== currentHighlight.pageIndex) return <></>;
+
+        const scale = props.scale;
 
         return (
             <div>
                 <div
-                    key={activeBox.id}
+                    key="highlight-box"
                     className="highlight-box"
                     style={{
-                        background: 'rgba(255, 0, 0, 0.2)',
-                        border: '2px solid red',
+                        background: 'rgba(255, 255, 0, 0.4)', // Visible yellow
+                        border: '2px solid rgba(255, 0, 0, 0.8)', // Red border for visibility
+                        boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
                         position: 'absolute',
-                        // Multiply by scale to prevent Drift
-                        left: `${activeBox.x * scale}px`,
-                        top: `${activeBox.y * scale}px`,
-                        width: `${activeBox.w * scale}px`,
-                        height: `${activeBox.h * scale}px`,
+                        left: `${currentHighlight.left * scale}px`,
+                        top: `${currentHighlight.top * scale}px`,
+                        width: `${currentHighlight.width * scale}px`,
+                        height: `${currentHighlight.height * scale}px`,
                         zIndex: 10,
+                        pointerEvents: 'none', // Allow clicking through
+                        transition: 'all 0.3s ease-in-out'
                     }}
                 />
             </div>
@@ -63,17 +118,18 @@ const PDFViewer = ({ pdfUrl, activeBox, onMount }) => {
     };
 
     return (
-        <div className="h-full w-full overflow-hidden bg-gray-100">
+        <div className="flex-1 overflow-auto bg-gray-100">
             {/* workerUrl points to public static file to avoid Vite hashing issues */}
             <Worker workerUrl="/pdf.worker.min.js">
                 <Viewer
                     fileUrl={pdfUrl}
                     plugins={[highlightPluginInstance]}
                     renderPageLayer={renderHighlights}
+                    defaultScale={1.2}
                 />
             </Worker>
         </div>
     );
-};
+});
 
 export default PDFViewer;

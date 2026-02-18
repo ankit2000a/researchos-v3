@@ -1,3 +1,8 @@
+import os
+import hashlib
+import json
+from datetime import datetime
+from typing import List, Dict, Any
 import json
 import logging
 import datetime
@@ -15,7 +20,12 @@ class ComplianceLogger:
     """
     def __init__(self, session_id: str, log_dir: str = "backend/logs"):
         self.session_id = session_id
-        self.log_dir = Path(log_dir)
+        if os.path.isabs(log_dir):
+            self.log_dir = Path(log_dir)
+        else:
+             # Make it relative to the backend root if running from there
+            self.log_dir = Path(os.getcwd()) / log_dir
+            
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file = self.log_dir / f"audit_trail_{session_id}.json"
         
@@ -52,7 +62,7 @@ class ComplianceLogger:
             entry.previous_hash = prev_hash
             
             # 4. Calculate new hash
-            entry_dict = entry.model_dump()
+            entry_dict = entry.model_dump(mode='json')
             # Remove fields that shouldn't be part of the payload if needed, 
             # but usually we hash everything except the hash itself.
             payload_dict = {k: v for k, v in entry_dict.items() if k != "entry_hash"}
@@ -61,7 +71,7 @@ class ComplianceLogger:
             entry.entry_hash = new_hash
             
             # 5. Append and Save
-            logs.append(entry.model_dump())
+            logs.append(entry.model_dump(mode='json'))
             
             with open(self.log_file, "w") as f:
                 json.dump(logs, f, indent=2)
@@ -71,3 +81,13 @@ class ComplianceLogger:
         except Exception as e:
             logger.error(f"CRITICAL: Failed to write compliance log: {e}")
             raise
+
+    def get_audit_trail(self) -> List[dict]:
+        """Returns the full audit trail for this session."""
+        if self.log_file.exists():
+            try:
+                with open(self.log_file, "r") as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                return []
+        return []
