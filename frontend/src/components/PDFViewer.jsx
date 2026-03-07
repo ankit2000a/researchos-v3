@@ -104,10 +104,10 @@ const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
                         border: '2px solid rgba(255, 0, 0, 0.8)', // Red border for visibility
                         boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
                         position: 'absolute',
-                        left: `${currentHighlight.left * scale}px`,
-                        top: `${currentHighlight.top * scale}px`,
-                        width: `${currentHighlight.width * scale}px`,
-                        height: `${currentHighlight.height * scale}px`,
+                        left: `${currentHighlight.left}%`,
+                        top: `${currentHighlight.top}%`,
+                        width: `${currentHighlight.width}%`,
+                        height: `${currentHighlight.height}%`,
                         zIndex: 10,
                         pointerEvents: 'none', // Allow clicking through
                         transition: 'all 0.3s ease-in-out'

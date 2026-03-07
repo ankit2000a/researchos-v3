@@ -94,64 +94,15 @@ async def process_pdf(session_id: str):
     
     try:
         logging.info(f"Processing session {session_id} with file {file_path}")
-        
-        # Process the PDF
         result = manager.process_document(file_path)
-        
-        # Add session_id to result
         result["session_id"] = session_id
-            
         latest_result = result
         return result
-        
-    except AttributeError as e:
-        logging.error(f"❌ Method error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal method error: {str(e)}")
-    except Exception as e:
-        logging.error(f"❌ Processing failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
-    except AttributeError as e:
-        logging.error(f"❌ Method error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal method error: {str(e)}")
     except Exception as e:
         logging.error(f"❌ Processing failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
-@app.get("/process/{session_id}")
-async def process_pdf(session_id: str):
-    """Process an uploaded PDF"""
-    global latest_result
-    
-    if session_id not in session_files: # Needs session_files dict or similar persistence
-         # For now, simplistic check or just trust the ID if we had a real DB
-         # checks specific to this simple in-memory implementation:
-         pass
 
-    # The original implementation of process_pdf was actually overwriting the one from the user's prompt request?
-    # No, wait. The user asked to ADD it. 
-    # Logic in `main.py` already had a `process_pdf` method at lines 75-105. 
-    # I see it there in the `view_file` output. 
-    # But wait! I see `session_files` is defined at line 40. 
-    # And `upload_files` endpoint is at line 49.
-    
-    # Ah, the user's prompt said "Bug 8... Add POST /upload... Add GET /process/{session_id}". 
-    # But `view_file` shows they ALREADY EXIST in `main.py`!
-    # Lines 49-72 is `upload_pdf`. Lines 74-105 is `process_pdf`.
-    # They seem to correspond to what the user asked for. 
-    # BUT, `process_pdf` calls `manager.process_document(file_path)` at line 91. 
-    # And `upload_pdf` saves files.
-    
-    # Missing piece: `mount /uploads with StaticFiles`. 
-    # I already added that in the chunk above. 
-    # So actually, I don't need to add the endpoints if they are already there!
-    # I just verified coordinates.
-    # Let me double check `view_file` output.
-    # Yes, lines 49-72: `@app.post("/upload")`. 
-    # Yes, lines 74-105: `@app.get("/process/{session_id}")`.
-    # So I only need to ensure `StaticFiles` is mounted. 
-    
-    # I will remove this replacement chunk since the endpoints exist.
-    pass
 @app.post("/api/audit")
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks):
     """

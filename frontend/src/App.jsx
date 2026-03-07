@@ -130,7 +130,8 @@ function App() {
                     )}
                     {!error && (
                         <DataSidebar
-                            data={data}
+                            data={data?.verified_data}
+                            sessionId={data?.session_id}
                             onSelectField={(location) => {
                                 // Update state for backward compatibility (highlight box)
                                 setActiveBox(location);

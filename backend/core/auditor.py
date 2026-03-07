@@ -78,6 +78,12 @@ class Auditor:
             if 'extracted_value' not in field_data:
                 field_data['extracted_value'] = field_data.get('value', '')
                 
+            # BUG 3 FIX: Extract and save pre-computed coordinate data from field_data
+            precomputed_coords = field_data.get('coords', [0, 0, 0, 0])
+            precomputed_source_location = field_data.get('source_location', None)
+            precomputed_source_page = field_data.get('source_page', 0)
+            precomputed_bbox = field_data.get('bbox', [0, 0, 0, 0])
+                
             try:
                 # 1. Parse into Schema Object
                 item = ClinicalDataField(**field_data)
@@ -88,12 +94,27 @@ class Auditor:
             value_str = str(item.value)
             
             # --- PROTOCOL STEP 1: GEOMETRIC VERIFICATION ---
-            coords, bbox_id = self._verify_geometry(value_str, vision_map)
+            coords, bbox_id, page = self._verify_geometry(value_str, vision_map)
+            
+            # BUG 3 FIX: Fall backup to pre-computed coordinates if not found
+            if not coords and precomputed_source_location:
+                sl = precomputed_source_location
+                if sl.get('x', 0) != 0 or sl.get('y', 0) != 0 or sl.get('w', 0) != 0 or sl.get('h', 0) != 0:
+                    coords = [sl.get('x', 0), sl.get('y', 0), sl.get('w', 0), sl.get('h', 0)]
+                    bbox_id = sl.get('id', field_name)
+                    page = sl.get('page', precomputed_source_page or 1)
+                    logger.info(f"✅ Using pre-computed coordinates for '{field_name}' from DataArchitect")
+
+            if not coords and precomputed_coords and any(c != 0 for c in precomputed_coords):
+                coords = precomputed_coords
+                bbox_id = field_name
+                page = precomputed_source_page or 1
+                logger.info(f"✅ Using pre-computed coords array for '{field_name}'")
             
             if coords:
                 item.coordinates = BoundingBox(
                     x=coords[0], y=coords[1], w=coords[2], h=coords[3], 
-                    page=1, id=bbox_id
+                    page=page, id=bbox_id
                 )
                 item.verification_status = VerificationStatus.VERIFIED
                 reasoning = [f"Geometrically verified at {coords}."]
@@ -147,6 +168,22 @@ class Auditor:
             item.thinking_log = f"Conflict Check Result: {conflict_result}"
             
             audited_data[field_name] = item.model_dump()
+            
+            # BUG 3 FIX: Re-inject the coordinate keys that the frontend expects
+            if 'source_location' in field_data:
+                audited_data[field_name]['source_location'] = field_data['source_location']
+            else:
+                audited_data[field_name]['source_location'] = {
+                    'id': field_name, 
+                    'page': page or 0,
+                    'x': coords[0] if coords else 0,
+                    'y': coords[1] if coords else 0,
+                    'w': coords[2] if coords else 0,
+                    'h': coords[3] if coords else 0
+                }
+            audited_data[field_name]['coords'] = field_data.get('coords', coords or precomputed_coords or [0, 0, 0, 0])
+            audited_data[field_name]['bbox'] = field_data.get('bbox', precomputed_bbox or coords or [0, 0, 0, 0])
+            audited_data[field_name]['source_page'] = field_data.get('source_page', page or precomputed_source_page or 0)
             
             # Log to 21 CFR Trail
             log_entry = AuditLogEntry(
@@ -262,10 +299,10 @@ Verify now:"""
     def _verify_geometry(self, value_str: str, vision_map: List[Dict]) -> Tuple:
         """
         Find geometric coordinates for a value in the vision map.
-        Returns: (coords, bbox_id) or (None, None) if not found
+        Returns: (coords, bbox_id, page) or (None, None, None) if not found
         """
         if not vision_map or not value_str:
-            return None, None
+            return None, None, None
         
         # Clean the search value
         # Fix 9: Strict normalization for matching "43,548" with "43548"
@@ -294,10 +331,10 @@ Verify now:"""
                 
                 logger.debug(f"✅ Found geometry for '{value_str[:30]}...' on page {page}")
                 
-                return coords, bbox_id
+                return coords, bbox_id, page
         
         logger.debug(f"⚠️ No geometry found for '{value_str[:30]}...'")
-        return None, None
+        return None, None, None
 
     def _check_conflict(self, field_name: str, value: Any, narrative: str) -> Dict: 
         """

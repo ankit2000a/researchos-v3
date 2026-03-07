@@ -41,8 +41,8 @@ class VisionSpecialist:
             result = self._get_result(whisper_hash, max_wait=180) 
             
             # Step 3: Extract data
-            narrative = self._extract_text_from_response(result)
-            vision_map = self._create_vision_map_from_response(result)
+            narrative = result.get('text', '')
+            vision_map = result.get('vision_map', [])
             
             if not narrative:
                 logger.warning("⚠️ Empty narrative from LLMWhisperer, using mock")
@@ -310,7 +310,7 @@ class VisionSpecialist:
         
         vision_map = []
         
-        # LLMWhisperer v2 format: line_metadata is array of [x, y, width, height]
+        # LLMWhisperer v2 format: line_metadata is array of [left, top, right, bottom]
         if 'line_metadata' not in data:
             logger.warning("No line_metadata in LLMWhisperer response")
             # Fallback to older formats
@@ -320,6 +320,8 @@ class VisionSpecialist:
         
         line_metadata = data['line_metadata']
         result_text = data.get('result_text', '')
+        metadata = data.get('metadata', {})
+        pages_metadata = metadata.get('pages', [])
         
         # Split text into lines to match with coordinates
         lines = result_text.split('\n')
@@ -329,11 +331,15 @@ class VisionSpecialist:
         valid_boxes = 0
         
         for idx, bbox in enumerate(line_metadata):
-            # bbox format: [x, y, width, height]
+            # bbox format: [left, top, right, bottom]
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
             
-            x, y, w, h = bbox
+            left, top, right, bottom = bbox
+            x = left
+            y = top  
+            w = right - left
+            h = bottom - top
             
             # Skip invalid boxes (all zeros or negative values)
             if (x == 0 and y == 0 and w == 0 and h == 0) or w <= 0 or h <= 0:
@@ -346,25 +352,45 @@ class VisionSpecialist:
             if not text_line:
                 continue
             
-            # Estimate page number based on y-coordinate
-            # Typical page height is ~3000-4000 pixels in LLMWhisperer
-            # This is a heuristic; ideally LLMWhisperer returns page numbers in metadata
-            page_height = 3024  
-            page_num = (y // page_height) + 1
+            page_num = 1
+            page_width = 2246  # Default fallback width
+            page_height = 3024 # Default fallback height
+            y_on_page = y
             
-            # Normalize y to page-relative coordinate
-            y_on_page = y % page_height
+            if pages_metadata:
+                for p_idx, p_data in enumerate(pages_metadata):
+                    line_start = p_data.get('line_start', 0)
+                    line_end = p_data.get('line_end', float('inf'))
+                    
+                    if line_start <= idx <= line_end:
+                        page_num = p_idx + 1
+                        page_width = p_data.get('width', page_width)
+                        page_height = p_data.get('height', page_height)
+                        # Assume y coordinates provided by LLMWhisperer are page-relative
+                        # or can simply be mapped. We just assign y_on_page = y
+                        y_on_page = y
+                        break
+            else:
+                # Fallback to estimation based on y-coordinate if no pages metadata
+                page_num = (y // page_height) + 1
+                y_on_page = y % page_height
+                
+            x_pct = (x / page_width) * 100
+            y_pct = (y_on_page / page_height) * 100
+            w_pct = (w / page_width) * 100
+            h_pct = (h / page_height) * 100
             
             vision_map.append({
                 'id': f'line_{idx}',
                 'type': 'text',
                 'value': text_line,
                 'page': page_num,
-                'x': x,
-                'y': y_on_page,
-                'w': w,
-                'h': h,
-                'coords': [x, y_on_page, w, h] # Ensure flat coords exist for legacy code
+                'x': x_pct,
+                'y': y_pct,
+                'w': w_pct,
+                'h': h_pct,
+                'coords': [x_pct, y_pct, w_pct, h_pct], # Percentage coords for frontend
+                'raw_coords': [x, y_on_page, w, h] # Raw pixel coords for debugging
             })
             
             valid_boxes += 1

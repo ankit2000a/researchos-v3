@@ -20,6 +20,8 @@ class BoundingBox(BaseModel):
     id: Optional[str] = None # traceable ID
 
 class ClinicalDataField(BaseModel):
+    model_config = {"extra": "ignore"}  # Allow extra keys without crashing
+    
     value: Any
     extracted_value: Any
     source_text: Optional[str] = None
