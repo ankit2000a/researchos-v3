@@ -232,8 +232,8 @@ class Auditor:
 EXTRACTED DATA:
 {chr(10).join(fields_to_verify)}
 
-SOURCE DOCUMENT (first 25000 chars):
-{narrative[:25000]}
+SOURCE DOCUMENT:
+{narrative}
 
 TASK:
 For each extracted field, check if the value is:

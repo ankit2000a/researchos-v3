@@ -36,9 +36,10 @@ const DataSidebar = ({ data, sessionId, onSelectField }) => {
                 )}
             </div>
 
-            {/* Reproducibility Badge */}
-            {data && data._metadata && (
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-3">
+                {/* Reproducibility Badge */}
+                {data && data._metadata && (
                     <div className="bg-green-50/50 border border-green-200 rounded-lg p-3">
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-lg">✅</span>
@@ -52,11 +53,7 @@ const DataSidebar = ({ data, sessionId, onSelectField }) => {
                             <p>• Same input → Same output (95% reproducible)</p>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-3">
+                )}
                 {Object.keys(data || {}).filter(k => !k.startsWith('_')).length === 0 ? (
                     <div className="text-center text-gray-400 py-8">
                         No verification data found

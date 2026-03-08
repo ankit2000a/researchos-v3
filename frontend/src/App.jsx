@@ -5,7 +5,6 @@ import DataSidebar from './components/DataSidebar';
 const PDF_URL = null;
 
 function App() {
-    const [activeBox, setActiveBox] = useState(null);
     const pdfViewerRef = React.useRef(null);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
@@ -103,7 +102,6 @@ function App() {
                             <PDFViewer
                                 ref={pdfViewerRef}
                                 pdfUrl={pdfUrl}
-                                activeBox={activeBox}
                             />
                         </div>
                     ) : (
@@ -133,9 +131,6 @@ function App() {
                             data={data?.verified_data}
                             sessionId={data?.session_id}
                             onSelectField={(location) => {
-                                // Update state for backward compatibility (highlight box)
-                                setActiveBox(location);
-
                                 // Direct imperative scroll to ensure we go to the right place
                                 if (pdfViewerRef.current) {
                                     pdfViewerRef.current.scrollToAndHighlight(location);

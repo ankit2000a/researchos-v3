@@ -1,33 +1,54 @@
-import React, { useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import React, { useImperativeHandle, forwardRef, useState, useMemo, useRef, useCallback } from 'react';
 import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { highlightPlugin } from '@react-pdf-viewer/highlight';
+import { pageNavigationPlugin } from '@react-pdf-viewer/page-navigation';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/highlight/lib/styles/index.css';
 
-const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
+const PDFViewer = forwardRef(({ pdfUrl, onMount }, ref) => {
     const [tempHighlight, setTempHighlight] = useState(null);
+    const tempHighlightRef = useRef(tempHighlight);
 
-    // Defensive check
-    if (!pdfUrl) return null;
+    // Keep ref in sync for renderHighlights which runs inside a stale closure without this.
+    tempHighlightRef.current = tempHighlight;
 
-    const highlightPluginInstance = highlightPlugin({
-        renderHighlightTarget: (props) => (
-            <div
-                style={{
-                    background: '#eee',
-                    display: 'flex',
-                    position: 'absolute',
-                    left: `${props.selectionRegion.left}%`,
-                    top: `${props.selectionRegion.top + props.selectionRegion.height}%`,
-                    zIndex: 1,
-                }}
-            />
-        ),
-    });
+    const renderHighlights = useCallback((props) => {
+        const currentTempHighlight = tempHighlightRef.current;
 
-    const { jumpToHighlightArea } = highlightPluginInstance;
+        if (!currentTempHighlight) return <></>;
+        if (props.pageIndex !== currentTempHighlight.pageIndex) return <></>;
 
-    // Allow parent to trigger scroll/highlight via ref
+        return (
+            <div>
+                <div
+                    key="highlight-box"
+                    className="highlight-box"
+                    style={{
+                        background: 'rgba(255, 255, 0, 0.4)', // Visible yellow
+                        border: '2px solid rgba(255, 0, 0, 0.8)', // Red border for visibility
+                        boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
+                        position: 'absolute',
+                        left: `${currentTempHighlight.left}%`,
+                        top: `${currentTempHighlight.top}%`,
+                        width: `${currentTempHighlight.width}%`,
+                        height: `${currentTempHighlight.height}%`,
+                        zIndex: 10,
+                        pointerEvents: 'none', // Allow clicking through
+                        transition: 'all 0.3s ease-in-out'
+                    }}
+                />
+            </div>
+        );
+    }, []);
+
+    const highlightPluginInstance = useMemo(() => highlightPlugin({
+        renderHighlights,
+    }), [renderHighlights]);
+
+    const pageNavigationPluginInstance = useMemo(() => pageNavigationPlugin(), []);
+    const { jumpToPage } = pageNavigationPluginInstance;
+
+    // Allow parent to trigger scroll/highlight via ref. Must be below all hooks.
     useImperativeHandle(ref, () => ({
         scrollToAndHighlight: (location) => {
             if (!location) return;
@@ -41,15 +62,8 @@ const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
                 pageIndex = page > 0 ? page - 1 : 0;
             }
 
-            // Use the library's built-in jump function
-            // It expects: { pageIndex, left, top, width, height }
-            jumpToHighlightArea({
-                pageIndex: pageIndex,
-                left: x,
-                top: y,
-                width: w,
-                height: h
-            });
+            // Navigate to the correct page
+            jumpToPage(pageIndex);
 
             // Immediate visual feedback (Yellow flash)
             setTempHighlight({
@@ -60,62 +74,15 @@ const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
                 height: h
             });
 
-            // Clear after 3 seconds
+            // Clear after 4 seconds
             setTimeout(() => {
                 setTempHighlight(null);
-            }, 3000);
+            }, 4000);
         }
     }));
 
-    // --- SYNC-CLICK LOGIC (Keep for backward compatibility if needed) ---
-    useEffect(() => {
-        if (activeBox) {
-            jumpToHighlightArea({
-                pageIndex: activeBox.page > 0 ? activeBox.page - 1 : 0,
-                left: activeBox.x,
-                top: activeBox.y,
-                width: activeBox.w,
-                height: activeBox.h
-            });
-        }
-    }, [activeBox]);
-
-    const renderHighlights = (props) => {
-        const currentHighlight = tempHighlight || (activeBox ? {
-            pageIndex: activeBox.page > 0 ? activeBox.page - 1 : 0,
-            left: activeBox.x,
-            top: activeBox.y,
-            width: activeBox.w,
-            height: activeBox.h
-        } : null);
-
-        if (!currentHighlight) return <></>;
-        if (props.pageIndex !== currentHighlight.pageIndex) return <></>;
-
-        const scale = props.scale;
-
-        return (
-            <div>
-                <div
-                    key="highlight-box"
-                    className="highlight-box"
-                    style={{
-                        background: 'rgba(255, 255, 0, 0.4)', // Visible yellow
-                        border: '2px solid rgba(255, 0, 0, 0.8)', // Red border for visibility
-                        boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
-                        position: 'absolute',
-                        left: `${currentHighlight.left}%`,
-                        top: `${currentHighlight.top}%`,
-                        width: `${currentHighlight.width}%`,
-                        height: `${currentHighlight.height}%`,
-                        zIndex: 10,
-                        pointerEvents: 'none', // Allow clicking through
-                        transition: 'all 0.3s ease-in-out'
-                    }}
-                />
-            </div>
-        );
-    };
+    // Defensive check MUST be AFTER all hooks (useState, useRef, useCallback, useMemo, useImperativeHandle)
+    if (!pdfUrl) return null;
 
     return (
         <div className="flex-1 overflow-auto bg-gray-100">
@@ -123,8 +90,7 @@ const PDFViewer = forwardRef(({ pdfUrl, activeBox, onMount }, ref) => {
             <Worker workerUrl="/pdf.worker.min.js">
                 <Viewer
                     fileUrl={pdfUrl}
-                    plugins={[highlightPluginInstance]}
-                    renderPageLayer={renderHighlights}
+                    plugins={[highlightPluginInstance, pageNavigationPluginInstance]}
                     defaultScale={1.2}
                 />
             </Worker>
