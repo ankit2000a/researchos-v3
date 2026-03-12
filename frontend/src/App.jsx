@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PDFViewer from './components/PDFViewer';
 import DataSidebar from './components/DataSidebar';
+import ErrorBoundary from './ErrorBoundary';
 
 const PDF_URL = null;
 
@@ -99,10 +100,12 @@ function App() {
                         // PDFViewer component has its own internal scroll container (Worker -> Viewer)
                         // But we need to ensure this container allows it to expand
                         <div className="flex-1 overflow-hidden relative flex flex-col">
-                            <PDFViewer
-                                ref={pdfViewerRef}
-                                pdfUrl={pdfUrl}
-                            />
+                            <ErrorBoundary>
+                                <PDFViewer
+                                    ref={pdfViewerRef}
+                                    pdfUrl={pdfUrl}
+                                />
+                            </ErrorBoundary>
                         </div>
                     ) : (
                         <div className="flex-1 flex items-center justify-center text-gray-400 overflow-auto">

@@ -24,7 +24,7 @@ def test_end_to_end_audit():
     # 2. Get Results
     res_response = client.get("/api/results")
     assert res_response.status_code == 200
-    report = res_response.json()["report"]
+    report = res_response.json()["verified_data"]
     
     # Verify Content
     assert "p_value" in report

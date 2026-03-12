@@ -49,13 +49,17 @@ class Auditor:
         audited_data = {}
         
         # Batch verify all fields in ONE API call (Fix 4)
-        batch_results = {}
+        batch_verification_api_failed = False
         try:
             logger.info("🔍 Batch verifying all fields...")
             batch_results = self._batch_verify_fields(data, markdown_text)
+            if batch_results is None:
+                batch_verification_api_failed = True
+                batch_results = {}
         except Exception as e:
             logger.warning(f"Batch verification skipped due to error: {e}")
             batch_results = {}
+            batch_verification_api_failed = True
             
         for field_name, field_data in data.items():
             # Fix 1: Skip internal metadata fields (they don't need auditing)
@@ -129,6 +133,10 @@ class Auditor:
             if field_name in batch_results:
                 conflict_result = batch_results[field_name]
                 logger.debug(f"✅ Used batch result for {field_name}")
+            elif batch_verification_api_failed:
+                # If batch failed (like 429 quota exhaustion), skip individual API spam
+                logger.warning(f"⚠️ Batch API failed, using rule-based fallback for {field_name}")
+                conflict_result = self._rule_based_conflict_check(field_name, item.value, markdown_text)
             else:
                 # Fallback to individual check
                 logger.debug(f"⚠️ No batch result for {field_name}, checking individually")
@@ -232,31 +240,37 @@ class Auditor:
 EXTRACTED DATA:
 {chr(10).join(fields_to_verify)}
 
-SOURCE DOCUMENT:
-{narrative}
+SOURCE DOCUMENT (first 100000 chars):
+{narrative[:100000]}
 
 TASK:
 For each extracted field, check if the value is:
 1. Mentioned in the source document
 2. Consistent with the narrative (no contradictions)
 
-Return a JSON object mapping field names to verification results:
-Each result should be an object with keys: "conflict" (boolean), "status" (string: VERIFIED, CONFLICT, REVIEW_NEEDED), "reasoning" (string).
+CRITICAL RULE FOR MISSING DATA:
+If the Extracted Value is "Not reported" or "None":
+- If the document DOES contain the information, status = "CRITICAL_CONFLICT" (reason: "Found in document at X")
+- If the document legitimately DOES NOT contain the information, status = "VERIFIED" (reason: "Correctly identified as not reported")
 
-Example response:
+Return a JSON object mapping field names to verification results:
+Each result should be an object with keys: "conflict" (boolean), "status" (string: VERIFIED, CRITICAL_CONFLICT, REVIEW_NEEDED), "reasoning" (string).
+
+Example responses:
 {{
   "sample_size": {{"conflict": false, "status": "VERIFIED", "reasoning": "Matches Methods section"}},
-  "p_value": {{"conflict": true, "status": "CONFLICT", "reasoning": "Document says p<0.05 but extracted p<0.001"}}
+  "p_value": {{"conflict": false, "status": "VERIFIED", "reasoning": "Correctly identified as not reported"}},
+  "drug_name": {{"conflict": true, "status": "CRITICAL_CONFLICT", "reasoning": "Document says Aspirin but extracted Tylenol"}}
 }}
 
 Verify now:"""
         
         try:
-            response_text = self._call_gemini_with_retry(batch_prompt, max_retries=2)
+            response_text = self._call_gemini_with_retry(batch_prompt, max_retries=1)
             
             if not response_text:
                 logger.warning("Batch verification failed to get response")
-                return {}
+                return None
             
             # Parse JSON response
             import json
@@ -294,7 +308,7 @@ Verify now:"""
             
         except Exception as e:
             logger.error(f"❌ Batch verification failed: {e}")
-            return {}
+            return None
 
     def _verify_geometry(self, value_str: str, vision_map: List[Dict]) -> Tuple:
         """
@@ -388,6 +402,12 @@ Verify now:"""
                 is_429 = '429' in error_str or 'RESOURCE_EXHAUSTED' in error_str or 'quota' in error_str.lower()
                 
                 if is_503 or is_429:
+                    if is_429:
+                        error_msg = str(e)
+                        if 'RESOURCE_EXHAUSTED' in error_msg or 'quota' in error_msg.lower():
+                            logger.warning("⚠️ Quota exhausted — skipping auditor batch verify entirely")
+                            return None  # Don't retry quota errors
+
                     retry_delay = 2 ** (attempt + 1)
                     
                     if attempt < max_retries - 1:

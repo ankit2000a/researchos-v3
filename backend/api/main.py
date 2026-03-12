@@ -99,8 +99,14 @@ async def process_pdf(session_id: str):
         latest_result = result
         return result
     except Exception as e:
-        logging.error(f"❌ Processing failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        error_msg = str(e)
+        logging.error(f"❌ Processing failed: {error_msg}", exc_info=True)
+        
+        # Return a clean 429 status code if we hit API limits
+        if "Rate Limit" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            raise HTTPException(status_code=429, detail="Google Gemini API Rate Limit (15 RPM) exceeded. Please wait a minute and try again.")
+            
+        raise HTTPException(status_code=500, detail=f"Processing failed: {error_msg}")
 
 
 @app.post("/api/audit")

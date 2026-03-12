@@ -62,4 +62,13 @@ class ManagerAgent:
             
         except Exception as e:
             logger.error(f"❌ Processing pipeline failed: {e}")
-            raise
+            # Return mock result so frontend doesn't get a 500
+            return {
+                "session_id": self.session_id,
+                "status": "PARTIAL_FAILURE",
+                "error": str(e),
+                "verified_data": {},
+                "vision_map": [],
+                "narrative": "",
+                "audit_trail": []
+            }

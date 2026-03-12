@@ -162,8 +162,7 @@ class DataArchitect:
             # Check if retry logic exhausted all attempts
             if not response_text:
                 logger.error("❌ Gemini returned empty response after all retry attempts")
-                logger.warning("⤵️  Falling back to mock extraction")
-                return self._mock_extract(vision_map)
+                raise Exception("Gemini API Rate Limit or Overload: Exhausted all retry attempts.")
             
             # Pass directly to response text handler (though we have text now, current flow expects response obj or we bypass)
             # Actually, the original code had: response = self.client... 
@@ -182,8 +181,7 @@ class DataArchitect:
             
             if not response_text:
                 logger.error("❌ Could not extract text from Gemini response")
-                logger.warning("⤵️  Falling back to mock extraction")
-                return self._mock_extract(vision_map)
+                raise Exception("Gemini extraction failed: Could not extract text from response.")
             
             logger.info(f"✅ Gemini responded with {len(response_text)} characters")
             
@@ -197,8 +195,7 @@ class DataArchitect:
             # Check if parsing returned empty dict (failed to extract)
             if not extracted:
                 logger.error("❌ Failed to parse any fields from Gemini response")
-                logger.warning("⤵️  Falling back to mock extraction")
-                return self._mock_extract(vision_map)
+                raise Exception("Gemini extraction failed: Could not parse any fields from JSON response.")
             
             # Link extracted fields to PDF coordinates
             if vision_map:
@@ -262,11 +259,14 @@ class DataArchitect:
             return extracted
             
         except Exception as e:
+            error_str = str(e)
+            if '429' in error_str or 'RESOURCE_EXHAUSTED' in error_str or 'quota' in error_str.lower():
+                logger.error("⚠️ Gemini quota exceeded — returning error to frontend")
+                raise Exception("Gemini API Rate Limit or Overload: Quota Exhausted.")
             logger.error(f"❌ Gemini extraction failed: {e}")
             import traceback
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
-            logger.warning("⤵️  Falling back to mock extraction")
-            return self._mock_extract(vision_map)
+            raise e
 
     def _extract_response_text(self, response) -> str:
         """Extract text from Gemini response object - tries multiple methods"""
@@ -681,6 +681,17 @@ Extract now:"""
                     best_score = similarity
                     best_match = item
         
+        # TIER 3.5: PREFIX MATCH (for multi-line extractions like primary_endpoint_result)
+        if not best_match and len(extracted_str) > 30:
+            # Check if the first 30 chars exist in any vision block (anchors long multi-line sentences)
+            prefix = self._normalize_for_matching(extracted_str[:30])
+            for item in vision_map:
+                if not item: continue
+                vision_text = self._normalize_for_matching(str(item.get('value', item.get('text', ''))))
+                if prefix in vision_text or vision_text in prefix:
+                    logger.info(f"🎯 Prefix match found for '{extracted_str[:30]}...'")
+                    return self._extract_coords_from_item(item)
+
         # Return best match if found from Tier 3 or 4
         if best_match and best_score > 0.85:
             logger.info(f"🎯 Best match found for '{extracted_str[:30]}...' with score {best_score:.2f}")
@@ -690,9 +701,9 @@ Extract now:"""
         # Only if no high confidence match was found
         if len(extracted_str) < 10:
             for item in vision_map:
-                vision_text = str(item.get('value', item.get('text', ''))).strip()
-                if extracted_str in vision_text:
-                    logger.info(f"🎯 Fallback match found for short value '{extracted_str}' in '{vision_text[:30]}...'")
+                vision_text = self._normalize_for_matching(str(item.get('value', item.get('text', ''))))
+                if normalized_extracted in vision_text:
+                    logger.info(f"🎯 Fallback match found for short value '{extracted_str}'")
                     return self._extract_coords_from_item(item)
         
         return None

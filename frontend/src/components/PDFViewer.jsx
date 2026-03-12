@@ -9,43 +9,44 @@ const PDFViewer = forwardRef(({ pdfUrl, onMount }, ref) => {
     const [tempHighlight, setTempHighlight] = useState(null);
     const tempHighlightRef = useRef(tempHighlight);
 
-    // Keep ref in sync for renderHighlights which runs inside a stale closure without this.
-    tempHighlightRef.current = tempHighlight;
+    // Update ref in effect to avoid mutate-during-render
+    React.useEffect(() => {
+        tempHighlightRef.current = tempHighlight;
+    }, [tempHighlight]);
 
     const renderHighlights = useCallback((props) => {
-        const currentTempHighlight = tempHighlightRef.current;
-
-        if (!currentTempHighlight) return <></>;
-        if (props.pageIndex !== currentTempHighlight.pageIndex) return <></>;
-
+        const h = tempHighlightRef.current;
+        const show = h && props.pageIndex === h.pageIndex;
         return (
-            <div>
-                <div
-                    key="highlight-box"
-                    className="highlight-box"
-                    style={{
-                        background: 'rgba(255, 255, 0, 0.4)', // Visible yellow
-                        border: '2px solid rgba(255, 0, 0, 0.8)', // Red border for visibility
-                        boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
-                        position: 'absolute',
-                        left: `${currentTempHighlight.left}%`,
-                        top: `${currentTempHighlight.top}%`,
-                        width: `${currentTempHighlight.width}%`,
-                        height: `${currentTempHighlight.height}%`,
-                        zIndex: 10,
-                        pointerEvents: 'none', // Allow clicking through
-                        transition: 'all 0.3s ease-in-out'
-                    }}
-                />
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                {show && (
+                    <div
+                        style={{
+                            background: 'rgba(255, 255, 0, 0.4)',
+                            border: '2px solid rgba(255, 0, 0, 0.8)',
+                            boxShadow: '0 0 8px rgba(255, 255, 0, 0.5)',
+                            position: 'absolute',
+                            left: `${h.left}%`,
+                            top: `${h.top}%`,
+                            width: `${h.width}%`,
+                            height: `${h.height}%`,
+                            zIndex: 10,
+                            pointerEvents: 'none',
+                            transition: 'all 0.3s ease-in-out'
+                        }}
+                    />
+                )}
             </div>
         );
     }, []);
 
-    const highlightPluginInstance = useMemo(() => highlightPlugin({
-        renderHighlights,
-    }), [renderHighlights]);
+    const highlightPluginInstance = highlightPlugin({ renderHighlights });
+    const pageNavigationPluginInstance = pageNavigationPlugin();
+    
+    // We do NOT useMemo plugins array here, because highlightPluginInstance is re-created every render
+    // and it acts as a custom hook. Memoizing or useState wrapping it violates Hook rules.
+    const plugins = [highlightPluginInstance, pageNavigationPluginInstance];
 
-    const pageNavigationPluginInstance = useMemo(() => pageNavigationPlugin(), []);
     const { jumpToPage } = pageNavigationPluginInstance;
 
     // Allow parent to trigger scroll/highlight via ref. Must be below all hooks.
@@ -90,7 +91,7 @@ const PDFViewer = forwardRef(({ pdfUrl, onMount }, ref) => {
             <Worker workerUrl="/pdf.worker.min.js">
                 <Viewer
                     fileUrl={pdfUrl}
-                    plugins={[highlightPluginInstance, pageNavigationPluginInstance]}
+                    plugins={plugins}
                     defaultScale={1.2}
                 />
             </Worker>
