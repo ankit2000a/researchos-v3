@@ -331,18 +331,14 @@ class VisionSpecialist:
         valid_boxes = 0
         
         for idx, bbox in enumerate(line_metadata):
-            # bbox format: [left, top, right, bottom]
+            # LLMWhisperer format: [page_no, y_bottom, line_height, page_height]
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
             
-            left, top, right, bottom = bbox
-            x = left
-            y = top  
-            w = right - left
-            h = bottom - top
+            page_no, y_bottom, line_height, page_height_bbox = bbox
             
-            # Skip invalid boxes (all zeros or negative values)
-            if (x == 0 and y == 0 and w == 0 and h == 0) or w <= 0 or h <= 0:
+            # Skip invalid boxes
+            if line_height <= 0 or page_height_bbox <= 0 or page_no < 0:
                 continue
             
             # Get corresponding text line
@@ -352,33 +348,24 @@ class VisionSpecialist:
             if not text_line:
                 continue
             
-            page_num = 1
-            page_width = 2246  # Default fallback width
-            page_height = 3024 # Default fallback height
-            y_on_page = y
+            page_num = page_no + 1
             
-            if pages_metadata:
-                for p_idx, p_data in enumerate(pages_metadata):
-                    line_start = p_data.get('line_start', 0)
-                    line_end = p_data.get('line_end', float('inf'))
-                    
-                    if line_start <= idx <= line_end:
-                        page_num = p_idx + 1
-                        page_width = p_data.get('width', page_width)
-                        page_height = p_data.get('height', page_height)
-                        # Assume y coordinates provided by LLMWhisperer are page-relative
-                        # or can simply be mapped. We just assign y_on_page = y
-                        y_on_page = y
-                        break
-            else:
-                # Fallback to estimation based on y-coordinate if no pages metadata
-                page_num = (y // page_height) + 1
-                y_on_page = y % page_height
-                
-            x_pct = (x / page_width) * 100
-            y_pct = (y_on_page / page_height) * 100
-            w_pct = (w / page_width) * 100
-            h_pct = (h / page_height) * 100
+            # Calculate percentages
+            # We want full-width horizontal highlights for lines
+            x_pct = 0.0
+            w_pct = 100.0
+            
+            # LLMWhisperer Y=0 is at the top of the page, and y_bottom is the Y coordinate of the bottom edge.
+            y_top = y_bottom - line_height
+            y_pct = (y_top / page_height_bbox) * 100
+            y_pct = max(0.0, min(100.0, y_pct))
+            
+            h_pct = (line_height / page_height_bbox) * 100
+            
+            # Maintain backward compatibility for "raw_coords" representation
+            x = 0
+            w = 1000 # dummy width
+            h = line_height
             
             vision_map.append({
                 'id': f'line_{idx}',
@@ -390,7 +377,7 @@ class VisionSpecialist:
                 'w': w_pct,
                 'h': h_pct,
                 'coords': [x_pct, y_pct, w_pct, h_pct], # Percentage coords for frontend
-                'raw_coords': [x, y_on_page, w, h] # Raw pixel coords for debugging
+                'raw_coords': [x, y_bottom, w, h] # Raw pixel coords for debugging
             })
             
             valid_boxes += 1

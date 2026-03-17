@@ -1,0 +1,7 @@
+Clean value: talosfillthegap:tafasitamabandlenalidomideindiffuselargeb-celllymphomainthereal-lifepatientjourney
+Partial look at 'talo' line: 'vided informed consent and received at least one of age or older; a total of 43,448 participants' -> 'videdinformedconsentandreceivedatleastoneofageorolder;atotalof43448participants'
+Partial look at 'talo' line: 'laboratory or at a local testing facility (using a tions (the population that could be evaluated).' -> 'laboratoryoratalocaltestingfacility(usingations(thepopulationthatcouldbeevaluated).'
+Partial look at 'talo' line: 'a total of 44,820 persons were screened, and' -> 'atotalof44820personswerescreenedand'
+Partial look at 'talo' line: 'the phase 2/3 portion of the trial. A total of' -> 'thephase2/3portionofthetrial.atotalof'
+Partial look at 'talo' line: 'total of 37,706 participants had a median of at than by older vaccine recipients (more than 55' -> 'totalof37706participantshadamedianofatthanbyoldervaccinerecipients(morethan55'
+MATCHED: G

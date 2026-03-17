@@ -319,32 +319,44 @@ Verify now:"""
             return None, None, None
         
         # Clean the search value
-        # Fix 9: Strict normalization for matching "43,548" with "43548"
         clean_value = str(value_str).strip().lower().replace(',', '').replace(' ', '')
         
         for elem in vision_map:
             if not elem or not isinstance(elem, dict):
                 continue
             
-            # FIX: Handle both 'value' (new format) and 'text' (legacy format) keys
+            # Handle both 'value' (new format) and 'text' (legacy format) keys
             elem_text = elem.get('value', elem.get('text', ''))
             
             if not elem_text:
                 continue
             
             # Clean the vision map text for comparison
-            # Fix 9: Strict normalization here too
             clean_elem = str(elem_text).strip().lower().replace(',', '').replace(' ', '')
             
-            # Check for exact match or substring match
-            if clean_value == clean_elem or clean_value in clean_elem or clean_elem in clean_value:
-                # Extract coordinates - handle both formats
+            # 1. Exact match
+            is_match = (clean_value == clean_elem)
+            
+            # 2. Value is found inside the element's text (e.g. "0.04" inside "P=0.04")
+            if not is_match and clean_value in clean_elem:
+                # Require the value to be reasonably distinct or the element to not be huge
+                if len(clean_value) >= 4 or len(clean_elem) < 15:
+                    is_match = True
+
+            # 3. Element text is found inside the extracted value (e.g. multi-line title)
+            if not is_match and clean_elem in clean_value:
+                # Require the element text to be substantial to prevent single-letter false positives
+                # e.g a stray "a" or "g" in the vision map matching a long title
+                if len(clean_elem) >= 8:
+                    is_match = True
+            
+            if is_match:
+                # Extract coordinates
                 coords = elem.get('coords', elem.get('bbox', [0, 0, 0, 0]))
                 bbox_id = elem.get('id', f"bbox_{elem.get('page', 0)}")
                 page = elem.get('page', 1)
                 
                 logger.debug(f"✅ Found geometry for '{value_str[:30]}...' on page {page}")
-                
                 return coords, bbox_id, page
         
         logger.debug(f"⚠️ No geometry found for '{value_str[:30]}...'")
